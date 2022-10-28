@@ -40,22 +40,20 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 // the recipe that add static modifier to class level method
 public class AddStaticModifierToClassLevelMethodRecipe extends Recipe {
-    
-    private boolean debug = true;
 
-    @Option(displayName = "Fully Qualified Class Name",
-            description = "A fully-qualified class name indicating which class to run the recipe against.",
-            example = "com.yourorg.FooBar")
+    @Option(displayName = "Fully Qualified Class Name", description = "A fully-qualified class name indicating which class to run the recipe against.", example = "com.yourorg.FooBar")
     @NonNull
     private final String fullyQualifiedClassName;
+
     public String getFullyQualifiedClassName() {
         return fullyQualifiedClassName;
     }
-    
-    // Recipes must be serializable. This is verified by RecipeTest.assertChanged() and RecipeTest.assertUnchanged()
-    public AddStaticModifierToClassLevelMethodRecipe(@NonNull @JsonProperty("fullyQualifiedClassName") String fullyQualifiedClassName) {
-        this.fullyQualifiedClassName = fullyQualifiedClassName;
 
+    // Recipes must be serializable. This is verified by RecipeTest.assertChanged()
+    // and RecipeTest.assertUnchanged()
+    public AddStaticModifierToClassLevelMethodRecipe(
+            @NonNull @JsonProperty("fullyQualifiedClassName") String fullyQualifiedClassName) {
+        this.fullyQualifiedClassName = fullyQualifiedClassName;
     }
 
     @Override
@@ -86,6 +84,11 @@ public class AddStaticModifierToClassLevelMethodRecipe extends Recipe {
 
         @Override
         public ClassDeclaration visitClassDeclaration(ClassDeclaration classDecl, ExecutionContext executionContext) {
+            if (classDecl == null || classDecl.getType() == null
+                    || !classDecl.getType().getFullyQualifiedName().equals(fullyQualifiedClassName)) {
+                return classDecl;
+            }
+
             // top class initialization
             // the class instance variables will be stored in instanceVariables
             if (executionContext.getMessage(topClassNameKey) == null) {
@@ -93,93 +96,76 @@ public class AddStaticModifierToClassLevelMethodRecipe extends Recipe {
                 executionContext.putMessage(instanceVariablesKey, instanceVariables);
                 executionContext.putMessage(nonStaticMethodsKey, nonStaticMethods);
             }
-            
-            // unset the insideAMethod flag
-            executionContext.putMessage(insideAMethodKey, false);
-
             String parentClassName = null;
             if (executionContext.getMessage(currentClassNameKey) != null) {
                 parentClassName = executionContext.getMessage(currentClassNameKey);
             }
             executionContext.putMessage(currentClassNameKey, classDecl.getSimpleName());
 
-
+            // unset the insideAMethod flag
+            executionContext.putMessage(insideAMethodKey, false);
             classDecl = super.visitClassDeclaration(classDecl, executionContext);
-            if(parentClassName != null) {
+            if (parentClassName != null) {
                 executionContext.putMessage(currentClassNameKey, parentClassName);
             }
 
-            if (classDecl == null || classDecl.getType() == null || !classDecl.getType().getFullyQualifiedName().equals(fullyQualifiedClassName)) {
-                return classDecl;
-            }
-
-            // add static modifier to transtive non-static methods iteratively; only do this at top level class
-            if(executionContext.getMessage(topClassNameKey).equals(classDecl.getSimpleName())){
+            // add static modifier to transtive non-static methods iteratively; only do this
+            // at top level class
+            if (executionContext.getMessage(topClassNameKey).equals(classDecl.getSimpleName())) {
                 executionContext.putMessage(currentClassNameKey, classDecl.getSimpleName());
                 while (true) {
                     int nonStaticMethodsSize = nonStaticMethods.size();
                     // remove static method from non-static method set
                     Set<String> newStaticMethods = classDecl.getBody().getStatements().stream()
-                    .filter(statement -> statement instanceof MethodDeclaration)
-                    .map(MethodDeclaration.class::cast)
-                    .filter(method -> Modifier.hasModifier(method.getModifiers(), Modifier.Type.Static))
-                    .map(method -> method.getSimpleName()).collect(Collectors.toSet());
-                    if (debug) {
-                        System.out.println("New Static Methods: " + newStaticMethods);
-                    }
+                            .filter(statement -> statement instanceof MethodDeclaration)
+                            .map(MethodDeclaration.class::cast)
+                            .filter(method -> Modifier.hasModifier(method.getModifiers(), Modifier.Type.Static))
+                            .map(method -> method.getSimpleName()).collect(Collectors.toSet());
                     nonStaticMethods.removeAll(newStaticMethods);
-                    if(nonStaticMethods.size()==nonStaticMethodsSize) {
+                    if (nonStaticMethods.size() == nonStaticMethodsSize) {
                         break;
                     }
-    
-                    for(Statement statement : classDecl.getBody().getStatements()) {
+
+                    for (Statement statement : classDecl.getBody().getStatements()) {
                         if (statement instanceof MethodDeclaration) {
                             MethodDeclaration method = (MethodDeclaration) statement;
-                            if(!Modifier.hasModifier(method.getModifiers(), Modifier.Type.Static)){                            
+                            if (!Modifier.hasModifier(method.getModifiers(), Modifier.Type.Static)) {
                                 method = visitMethodDeclaration(method, executionContext);
                             }
                         }
-                    }   
+                    }
                 }
             }
-            
-            if (debug) {
-                Set<String> nonStaticMethods = executionContext.getMessage(nonStaticMethodsKey);
-                System.out.println("Non Static Methods: " + nonStaticMethods);
-                System.out.println("Final Class methods: ");
-                classDecl.getBody().getStatements().stream()
-                .filter(statement -> statement instanceof MethodDeclaration)
-                .map(MethodDeclaration.class::cast)
-                .map(method -> method.getModifiers() + "  " + method.getSimpleName())
-                .forEach((System.out::println));
-            }
+
+            Set<String> nonStaticMethods = executionContext.getMessage(nonStaticMethodsKey);
+            System.out.println("Non Static Methods: " + nonStaticMethods);
+            System.out.println("Final Class methods: ");
+            classDecl.getBody().getStatements().stream()
+                    .filter(statement -> statement instanceof MethodDeclaration)
+                    .map(MethodDeclaration.class::cast)
+                    .map(method -> method.getModifiers() + "  " + method.getSimpleName())
+                    .forEach((System.out::println));
             return classDecl;
         }
 
         @Override
-        public MethodDeclaration visitMethodDeclaration(MethodDeclaration methodDeclaration, ExecutionContext executionContext) {
-            if (debug) {
-                System.out.println("visitMethodDeclaration: " + methodDeclaration.getSimpleName());
-                Set<String> instanceVariables = executionContext.getMessage(instanceVariablesKey);
-                System.out.println("Instance Variables: " + instanceVariables);
-            }
-
+        public MethodDeclaration visitMethodDeclaration(MethodDeclaration methodDeclaration,
+                ExecutionContext executionContext) {
             // collect non-static methods
+            boolean hasStaticModifier = Modifier.hasModifier(methodDeclaration.getModifiers(), Modifier.Type.Static);
             Set<String> nonStaticMethods = executionContext.getMessage(nonStaticMethodsKey);
-            if (!Modifier.hasModifier(methodDeclaration.getModifiers(), Modifier.Type.Static)) {
+            if (!hasStaticModifier) {
                 nonStaticMethods.add(methodDeclaration.getSimpleName());
             }
 
             String parentClassName = executionContext.getMessage(currentClassNameKey);
             // avoid modifying constructor
-            if(parentClassName != null && parentClassName.equals(methodDeclaration.getSimpleName())) {
-                if (debug) System.out.println("leaveMethodDeclaration: " + methodDeclaration.getSimpleName());
+            if (parentClassName != null && parentClassName.equals(methodDeclaration.getSimpleName())) {
                 return methodDeclaration;
             }
             // avoid modifying inner class method
-            String topClassName  = executionContext.getMessage(topClassNameKey);
+            String topClassName = executionContext.getMessage(topClassNameKey);
             if (!topClassName.equals(parentClassName)) {
-                if (debug) System.out.println("leaveMethodDeclaration: " + methodDeclaration.getSimpleName());
                 return methodDeclaration;
             }
 
@@ -191,15 +177,15 @@ public class AddStaticModifierToClassLevelMethodRecipe extends Recipe {
 
             boolean exist = nonStaticMethods.remove(methodDeclaration.getSimpleName());
             methodDeclaration = super.visitMethodDeclaration(methodDeclaration, executionContext);
-            if (exist) nonStaticMethods.add(methodDeclaration.getSimpleName());
+            if (exist)
+                nonStaticMethods.add(methodDeclaration.getSimpleName());
 
-            // if it is non-override method, return immediately
-            if(methodDeclaration.getAllAnnotations()== null ){
-                if (debug) System.out.println("leaveMethodDeclaration: " + methodDeclaration.getSimpleName());
+            // if it is overridable method, return immediately
+            if (methodDeclaration.getAllAnnotations() == null) {
                 return methodDeclaration;
             }
-            if(methodDeclaration.getAllAnnotations().stream().anyMatch(annotaion -> annotaion.getSimpleName().equals("Override"))){
-                if (debug) System.out.println("leaveMethodDeclaration: " + methodDeclaration.getSimpleName());
+            if (methodDeclaration.getAllAnnotations().stream()
+                    .anyMatch(annotaion -> annotaion.getSimpleName().equals("Override"))) {
                 return methodDeclaration;
             }
 
@@ -212,65 +198,66 @@ public class AddStaticModifierToClassLevelMethodRecipe extends Recipe {
             executionContext.putMessage(methodUsesInstanceVariableKey, false);
             executionContext.putMessage(methodUsesInvalidMethodKey, false);
 
-            // avoid modifying abstract method
+            // avoid modifying abstract method and existing static method
+            boolean hasAbstractMofifier = Modifier.hasModifier(methodDeclaration.getModifiers(),
+                    Modifier.Type.Abstract);
             if (!methodUsesInstanceVariable &&
-                !methodUsesInvalidMethod && 
-                !(Modifier.hasModifier(methodDeclaration.getModifiers(), Modifier.Type.Static) || Modifier.hasModifier(methodDeclaration.getModifiers(), Modifier.Type.Abstract))) {
-                if (debug) System.out.println("We need to change " + methodDeclaration.getSimpleName());
-                Modifier staticModifier = new Modifier(Tree.randomId(), Space.build(" ", Collections.emptyList()), Markers.EMPTY, Modifier.Type.Static, Collections.emptyList());
+                    !methodUsesInvalidMethod &&
+                    !(hasStaticModifier || hasAbstractMofifier)) {
+                Modifier staticModifier = new Modifier(Tree.randomId(), Space.build(" ", Collections.emptyList()),
+                        Markers.EMPTY, Modifier.Type.Static, Collections.emptyList());
                 List<Modifier> modifiers = methodDeclaration.getModifiers();
                 modifiers.add(staticModifier);
                 methodDeclaration = methodDeclaration.withModifiers(modifiers);
             }
-            if (debug) System.out.println("leaveMethodDeclaration: " + methodDeclaration.getSimpleName());
             return methodDeclaration;
         }
 
         @Override
-        public VariableDeclarations visitVariableDeclarations(VariableDeclarations variableDeclaration, ExecutionContext executionContext) {
-            if (debug)   System.out.println("visitVariableDeclarations");
+        public VariableDeclarations visitVariableDeclarations(VariableDeclarations variableDeclaration,
+                ExecutionContext executionContext) {
             variableDeclaration = super.visitVariableDeclarations(variableDeclaration, executionContext);
-            if(variableDeclaration==null || variableDeclaration.getModifiers() == null || variableDeclaration.getVariables() == null){
+            if (variableDeclaration == null || variableDeclaration.getModifiers() == null
+                    || variableDeclaration.getVariables() == null) {
                 return variableDeclaration;
             }
             // get the insideAMethod flag
             boolean insideAMethod = executionContext.getMessage(insideAMethodKey);
             // if it is not inside a method and variable has a static modifer, return
             // if it is inside a method, return
-            if(!insideAMethod){
-                if (Modifier.hasModifier(variableDeclaration.getModifiers(), Modifier.Type.Static)){
-                    if (debug) System.out.println("leaveVariableDeclarations");
+            if (!insideAMethod) {
+                if (Modifier.hasModifier(variableDeclaration.getModifiers(), Modifier.Type.Static)) {
                     return variableDeclaration;
                 }
             } else {
-                if (debug) System.out.println("leaveVariableDeclarations");
                 return variableDeclaration;
             }
-            
+
             // collect the class instance variables
-            for (VariableDeclarations.NamedVariable variable : variableDeclaration.getVariables()){
+            for (VariableDeclarations.NamedVariable variable : variableDeclaration.getVariables()) {
                 Set<String> instanceVariables = executionContext.getMessage(instanceVariablesKey);
                 instanceVariables.add(variable.getSimpleName());
             }
-            if (debug) System.out.println("leaveVariableDeclarations");
             return variableDeclaration;
         }
 
         @Override
         public Identifier visitIdentifier(Identifier identifier, ExecutionContext executionContext) {
             identifier = super.visitIdentifier(identifier, executionContext);
-            if(identifier==null){
+            if (identifier == null) {
                 return identifier;
             }
             // get the insideAMethod flag
             Boolean insideAMethod = executionContext.getMessage(insideAMethodKey);
-            
-            // if the identifier is inside a method, decide whether the method uses the instance variable or not
-            if (insideAMethod!=null && insideAMethod){
+
+            // if the identifier is inside a method, decide whether the method uses the
+            // instance variable and static method or not
+            if (insideAMethod != null && insideAMethod) {
                 Set<String> instanceVariables = executionContext.getMessage(instanceVariablesKey);
                 boolean isInstanceVariable = instanceVariables.contains(identifier.toString());
                 boolean methodUsesInstanceVariable = executionContext.getMessage(methodUsesInstanceVariableKey);
-                executionContext.putMessage(methodUsesInstanceVariableKey, methodUsesInstanceVariable || isInstanceVariable);
+                executionContext.putMessage(methodUsesInstanceVariableKey,
+                        methodUsesInstanceVariable || isInstanceVariable);
 
                 Set<String> nonStaticMethods = executionContext.getMessage(nonStaticMethodsKey);
                 boolean methodUsesInvalidMethod = executionContext.getMessage(methodUsesInvalidMethodKey);
