@@ -34,6 +34,26 @@ class AddStaticModifierToClassLevelMethodRecipeTest implements RewriteTest {
                         private String instanceData1 = "test1";
                         String instanceData2 = "test2";
                         
+                        public A () {
+
+                        }
+
+                        // nonStaticMethod1, nonStaticMethod2, nonStaticMethod3 can be converted to static methods transitively
+                        public int nonStaticMethod1 (){
+                            nonStaticMethod1();
+                            return magicWord1;
+                        }
+
+                        public int nonStaticMethod2 (){
+                            return nonStaticMethod1();
+                        }
+
+                        public int nonStaticMethod3 (){
+                            return nonStaticMethod2();
+                        }
+
+                        public abstract int abstractMethod(int n1, int n2);
+
                         private String getMagicWord1(int a, int b){
                             int test = 0;
                             int c = a;
@@ -41,7 +61,7 @@ class AddStaticModifierToClassLevelMethodRecipeTest implements RewriteTest {
                         }
 
                         private String getMagicWord2(int a, int b){
-                            int test = instanceData2;
+                            int test = this::instanceData2;
                             int c = a;
                             return magicWord2;
                         }
@@ -51,6 +71,18 @@ class AddStaticModifierToClassLevelMethodRecipeTest implements RewriteTest {
                             int test = 0;
                             int c = a;
                             return magicWord1;
+                        }
+
+                        private String getMagicWord4(int a, int b){
+                            super.test();
+                            return magicWord1;
+                        }
+
+                        public class B {
+                            public B() {}
+                            private String getMagicWord5() {
+                                return "";
+                            }
                         }
                     }
                 """
@@ -65,6 +97,26 @@ class AddStaticModifierToClassLevelMethodRecipeTest implements RewriteTest {
                         private String instanceData1 = "test1";
                         String instanceData2 = "test2";
                         
+                        public A () {
+
+                        }
+
+                        // nonStaticMethod1, nonStaticMethod2, nonStaticMethod3 can be converted to static methods transitively
+                        public static int nonStaticMethod1 (){
+                            nonStaticMethod1();
+                            return magicWord1;
+                        }
+
+                        public static int nonStaticMethod2 (){
+                            return nonStaticMethod1();
+                        }
+
+                        public static int nonStaticMethod3 (){
+                            return nonStaticMethod2();
+                        }
+
+                        public abstract int abstractMethod(int n1, int n2);
+
                         private static String getMagicWord1(int a, int b){
                             int test = 0;
                             int c = a;
@@ -72,7 +124,7 @@ class AddStaticModifierToClassLevelMethodRecipeTest implements RewriteTest {
                         }
 
                         private String getMagicWord2(int a, int b){
-                            int test = instanceData2;
+                            int test = this::instanceData2;
                             int c = a;
                             return magicWord2;
                         }
@@ -82,6 +134,18 @@ class AddStaticModifierToClassLevelMethodRecipeTest implements RewriteTest {
                             int test = 0;
                             int c = a;
                             return magicWord1;
+                        }
+
+                        private String getMagicWord4(int a, int b){
+                            super.test();
+                            return magicWord1;
+                        }
+
+                        public class B {
+                            public B() {}
+                            private String getMagicWord5() {
+                                return "";
+                            }
                         }
                     }
                 """
